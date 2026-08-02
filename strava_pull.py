@@ -1,6 +1,5 @@
 import os
 import requests
-import time
 from datetime import datetime
 from dotenv import load_dotenv
 import db
@@ -14,7 +13,7 @@ def log_poll(message):
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] {message}")
 
-access_token = os.getenv("STRAVA_ACCESS_TOKEN")
+access_token = None
 expires_at = None  # Will be set from token response; tracks expiry as Unix timestamp
 last_processed_activity_id = None
 
@@ -22,9 +21,9 @@ def refresh_access_token():
     """Refresh Strava access token using refresh token. Updates expires_at."""
     global access_token, expires_at
 
-    refresh_token = os.getenv("STRAVA_REFRESH_TOKEN")
+    refresh_token = db.get_refresh_token('strava')
     if not refresh_token:
-        raise ValueError("No refresh token found in .env - need to run strava_auth.py first")
+        raise ValueError("No refresh token found in database - need to run strava_auth.py first")
 
     response = requests.post(
         "https://www.strava.com/api/v3/oauth/token",
@@ -41,19 +40,7 @@ def refresh_access_token():
     expires_at = token_data.get("expires_at")
 
     if "refresh_token" in token_data:
-        env_file = ".env"
-        new_token = token_data['refresh_token']
-
-        lines = []
-        if os.path.exists(env_file):
-            with open(env_file, "r") as f:
-                lines = f.readlines()
-
-        updated_lines = [line for line in lines if not line.startswith("STRAVA_REFRESH_TOKEN=")]
-        updated_lines.append(f"STRAVA_REFRESH_TOKEN={new_token}\n")
-
-        with open(env_file, "w") as f:
-            f.writelines(updated_lines)
+        db.save_refresh_token('strava', token_data['refresh_token'])
 
     return access_token
 
@@ -171,20 +158,5 @@ def poll():
         if duplicate_count > 0:
             log_poll(f"Stored {inserted_count} activities, {duplicate_count} duplicates skipped")
 
-# Load expires_at from last token if available (for multi-run persistence)
-# In practice, strava_auth.py should update .env with expires_at for first run
-if expires_at is None:
-    try:
-        # Try to extract from existing token data if stored
-        refresh_token = os.getenv("STRAVA_REFRESH_TOKEN")
-        if refresh_token:
-            log_poll("Refreshing token on startup...")
-            refresh_access_token()
-    except Exception as e:
-        log_poll(f"Warning: Could not refresh token on startup: {e}")
-
-# Simple sleep loop—keeps dependencies minimal
-log_poll("Starting polling loop (check for new activities every 5 minutes)...")
-while True:
-    poll()
-    time.sleep(300)  # 5 minutes
+refresh_access_token()
+poll()
