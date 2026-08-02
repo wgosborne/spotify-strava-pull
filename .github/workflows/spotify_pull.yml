@@ -25,4 +25,4 @@ jobs:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python spotify_poller.py
+        run: python spotify_pull.py
