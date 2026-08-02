@@ -1,12 +1,7 @@
 import os
-import webbrowser
-import json
 import requests
-import time
 from datetime import datetime
-from dotenv import load_dotenv, dotenv_values
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from dotenv import load_dotenv
 import db
 
 load_dotenv()
@@ -19,13 +14,11 @@ def log_poll(message):
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] {message}")
 
-auth_code = None
-
 # Refresh tokens last much longer than access tokens (~1 hour), so we reuse them
 def refresh_access_token():
-    refresh_token = os.getenv("SPOTIFY_REFRESH_TOKEN")
+    refresh_token = db.get_refresh_token('spotify')
     if not refresh_token:
-        raise ValueError("No refresh token found in .env - need to do full login flow first")
+        raise ValueError("No refresh token found in database - need to do full login flow first")
 
     response = requests.post(
         "https://accounts.spotify.com/api/token",
@@ -41,76 +34,11 @@ def refresh_access_token():
     new_access_token = new_token_data["access_token"]
 
     if "refresh_token" in new_token_data:
-        env_file = ".env"
-        new_token = new_token_data['refresh_token']
-
-        lines = []
-        if os.path.exists(env_file):
-            with open(env_file, "r") as f:
-                lines = f.readlines()
-
-        updated_lines = [line for line in lines if not line.startswith("SPOTIFY_REFRESH_TOKEN=")]
-        updated_lines.append(f"SPOTIFY_REFRESH_TOKEN={new_token}\n")
-
-        with open(env_file, "w") as f:
-            f.writelines(updated_lines)
+        db.save_refresh_token('spotify', new_token_data['refresh_token'])
 
     return new_access_token
 
-class CallbackHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        global auth_code
-        parsed_url = urlparse(self.path)
-        query_params = parse_qs(parsed_url.query)
-        auth_code = query_params.get("code", [None])[0]
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write(b"<h1>Authorization successful! You can close this window.</h1>")
-
-    def log_message(self, format, *args):
-        pass
-
-scopes = "user-read-recently-played user-top-read user-read-currently-playing user-read-playback-state"
-auth_url = f"https://accounts.spotify.com/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={REDIRECT_URI}&scope={scopes}"
-
-webbrowser.open(auth_url)
-
-server = HTTPServer(("127.0.0.1", 8080), CallbackHandler)
-print("Listening for Spotify callback on http://127.0.0.1:8080...")
-server.handle_request()
-
-print("Exchanging code for access token...")
-token_response = requests.post(
-    "https://accounts.spotify.com/api/token",
-    data={
-        "grant_type": "authorization_code",
-        "code": auth_code,
-        "redirect_uri": REDIRECT_URI,
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-    },
-)
-token_data = token_response.json()
-access_token = token_data["access_token"]
-
-# Persist refresh token so we don't need to re-auth each run
-refresh_token = token_data.get("refresh_token")
-if refresh_token:
-    env_file = ".env"
-
-    lines = []
-    if os.path.exists(env_file):
-        with open(env_file, "r") as f:
-            lines = f.readlines()
-
-    updated_lines = [line for line in lines if not line.startswith("SPOTIFY_REFRESH_TOKEN=")]
-    updated_lines.append(f"SPOTIFY_REFRESH_TOKEN={refresh_token}\n")
-
-    with open(env_file, "w") as f:
-        f.writelines(updated_lines)
-    print("Saved refresh token to .env")
-
+access_token = None
 last_processed_timestamp = None
 
 # Wrapped in function so it can be called repeatedly without re-auth
@@ -173,8 +101,5 @@ def poll():
         if duplicate_count > 0:
             log_poll(f"Stored {inserted_count} plays, {duplicate_count} duplicates skipped")
 
-# Simple sleep loop instead of scheduler lib—keeps dependencies minimal
-print("Starting polling loop (check for new plays every 30 seconds)...")
-while True:
-    poll()
-    time.sleep(30)
+access_token = refresh_access_token()
+poll()
