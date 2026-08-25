@@ -153,3 +153,58 @@ def save_refresh_token(service, refresh_token):
         if conn:
             conn.close()
         return False
+
+
+def get_activities_missing_description():
+    """Get all activities with missing/NULL description since 2026-07-04. Returns list of (strava_id, name) tuples."""
+    if not DATABASE_URL:
+        print("Warning: DATABASE_URL not set")
+        return []
+
+    conn = None
+    try:
+        conn = get_connection()
+        if not conn:
+            return []
+
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT strava_id, name FROM activities WHERE (description IS NULL OR description = '') AND start_date >= '2026-07-04 00:37:42+00' ORDER BY start_date DESC"
+        )
+        results = cur.fetchall()
+        cur.close()
+        conn.close()
+        return results if results else []
+    except Exception as e:
+        print(f"Database error reading activities: {e}")
+        if conn:
+            conn.close()
+        return []
+
+
+def update_activity_description(strava_id, description):
+    """Update the description for an existing activity. Returns True if successful."""
+    if not DATABASE_URL:
+        print("Warning: DATABASE_URL not set, skipping database write")
+        return False
+
+    conn = None
+    try:
+        conn = get_connection()
+        if not conn:
+            return False
+
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE activities SET description = %s WHERE strava_id = %s",
+            (description, strava_id)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Database error: {e}")
+        if conn:
+            conn.close()
+        return False
