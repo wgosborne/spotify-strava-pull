@@ -139,6 +139,9 @@ def poll():
     already_seen = len(all_items) - len(new_items)
     log_poll(f"Polled Strava — {len(new_items)} new detected, {already_seen} already seen")
 
+    # Track new item IDs to avoid re-checking them in the recent update logic
+    new_item_ids = set(item.get("id") for item in new_items)
+
     if new_items:
         for item in new_items:
             activity_name = item.get("name", "Unknown")
@@ -158,12 +161,52 @@ def poll():
             description = fetch_activity_detail(strava_id, name)
 
             # Insert activity with description
-            if db.insert_activity(strava_id, name, distance, moving_time, average_speed, start_date, description):
+            success, was_insert = db.insert_activity(strava_id, name, distance, moving_time, average_speed, start_date, description)
+            if success:
                 inserted_count += 1
 
         duplicate_count = len(new_items) - inserted_count
         if duplicate_count > 0:
             log_poll(f"Stored {inserted_count} activities, {duplicate_count} duplicates skipped")
+
+    # Check the 3 most recent activities for name/description changes
+    recent_items = all_items[:3] if all_items else []
+    for item in recent_items:
+        activity_id = item.get("id")
+        # Skip if this was already processed as a new item this cycle
+        if activity_id in new_item_ids:
+            continue
+
+        activity_name = item.get("name", "Unknown")
+        distance = item.get("distance", 0)
+        moving_time = item.get("moving_time", 0)
+        average_speed = item.get("average_speed", 0)
+        start_date = item.get("start_date")
+
+        # Fetch description for existing activity (without processing splits)
+        description = None
+        try:
+            activity_detail_response = requests.get(
+                f"https://www.strava.com/api/v3/activities/{activity_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+
+            if activity_detail_response.status_code == 401:
+                refresh_access_token()
+                activity_detail_response = requests.get(
+                    f"https://www.strava.com/api/v3/activities/{activity_id}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+
+            activity_detail = activity_detail_response.json()
+            description = activity_detail.get("description")
+        except Exception as e:
+            log_poll(f"  Warning: Could not fetch description for activity {activity_id}: {e}")
+
+        # Check for name/description changes (without processing splits for existing activities)
+        success, was_insert = db.insert_activity(activity_id, activity_name, distance, moving_time, average_speed, start_date, description)
+        if success and not was_insert:
+            log_poll(f'  -> Updated: "{activity_name}"')
 
 refresh_access_token()
 poll()

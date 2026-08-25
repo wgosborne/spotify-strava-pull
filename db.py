@@ -44,32 +44,43 @@ def insert_play(track_name, artist, played_at, source, album_art_url=None):
 
 
 def insert_activity(strava_id, name, distance, moving_time, average_speed, start_date, description=None):
-    """Insert a single activity into the activities table. Returns True if inserted, False if duplicate. Logs errors and continues on failure."""
+    """Insert or update activity. Returns (success: bool, was_insert: bool). success=True means a row was returned (new insert OR real change applied), False means no-op (identical duplicate)."""
     if not DATABASE_URL:
         print("Warning: DATABASE_URL not set, skipping database write")
-        return False
+        return (False, False)
 
     conn = None
     try:
         conn = get_connection()
         if not conn:
-            return False
+            return (False, False)
 
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO activities (strava_id, name, distance, moving_time, average_speed, start_date, description) VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (strava_id) DO NOTHING RETURNING id",
+            """INSERT INTO activities (strava_id, name, distance, moving_time, average_speed, start_date, description)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)
+               ON CONFLICT (strava_id) DO UPDATE SET
+                 name = EXCLUDED.name,
+                 description = EXCLUDED.description
+               WHERE activities.name IS DISTINCT FROM EXCLUDED.name
+                  OR activities.description IS DISTINCT FROM EXCLUDED.description
+               RETURNING id, (xmax = 0) AS was_insert""",
             (strava_id, name, distance, moving_time, average_speed, start_date, description)
         )
         result = cur.fetchone()
         conn.commit()
         cur.close()
         conn.close()
-        return result is not None
+
+        if result is not None:
+            activity_id, was_insert = result
+            return (True, was_insert)
+        return (False, False)
     except Exception as e:
         print(f"Database error: {e}")
         if conn:
             conn.close()
-        return False
+        return (False, False)
 
 
 def insert_split(activity_id, split_number, distance, elapsed_time, average_speed, start_offset_seconds):
