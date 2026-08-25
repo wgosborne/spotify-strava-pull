@@ -14,7 +14,7 @@ def get_connection():
     return psycopg2.connect(DATABASE_URL)
 
 
-def insert_play(track_name, artist, played_at, source):
+def insert_play(track_name, artist, played_at, source, album_art_url=None):
     """Insert a single play into the plays table. Returns True if inserted, False if duplicate. Logs errors and continues on failure."""
     if not DATABASE_URL:
         print("Warning: DATABASE_URL not set, skipping database write")
@@ -28,8 +28,8 @@ def insert_play(track_name, artist, played_at, source):
 
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO plays (track_name, artist, played_at, source) VALUES (%s, %s, %s, %s) ON CONFLICT (track_name, artist, played_at) DO NOTHING RETURNING id",
-            (track_name, artist, played_at, source)
+            "INSERT INTO plays (track_name, artist, played_at, source, album_art_url) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (track_name, artist, played_at) DO NOTHING RETURNING id",
+            (track_name, artist, played_at, source, album_art_url)
         )
         result = cur.fetchone()
         conn.commit()
@@ -43,7 +43,7 @@ def insert_play(track_name, artist, played_at, source):
         return False
 
 
-def insert_activity(strava_id, name, distance, moving_time, average_speed, start_date):
+def insert_activity(strava_id, name, distance, moving_time, average_speed, start_date, description=None):
     """Insert a single activity into the activities table. Returns True if inserted, False if duplicate. Logs errors and continues on failure."""
     if not DATABASE_URL:
         print("Warning: DATABASE_URL not set, skipping database write")
@@ -57,8 +57,8 @@ def insert_activity(strava_id, name, distance, moving_time, average_speed, start
 
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO activities (strava_id, name, distance, moving_time, average_speed, start_date) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (strava_id) DO NOTHING RETURNING id",
-            (strava_id, name, distance, moving_time, average_speed, start_date)
+            "INSERT INTO activities (strava_id, name, distance, moving_time, average_speed, start_date, description) VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (strava_id) DO NOTHING RETURNING id",
+            (strava_id, name, distance, moving_time, average_speed, start_date, description)
         )
         result = cur.fetchone()
         conn.commit()

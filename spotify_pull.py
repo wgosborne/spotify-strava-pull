@@ -94,7 +94,14 @@ def poll():
             track_name = item.get("track", {}).get("name", "Unknown")
             artist_name = item.get("track", {}).get("artists", [{}])[0].get("name", "Unknown")
             played_at = item.get("played_at")
-            if db.insert_play(track_name, artist_name, played_at, "spotify"):
+
+            # Extract album art URL if available
+            album_art_url = None
+            images = item.get("track", {}).get("album", {}).get("images", [])
+            if images:
+                album_art_url = images[0].get("url")
+
+            if db.insert_play(track_name, artist_name, played_at, "spotify", album_art_url):
                 inserted_count += 1
 
         duplicate_count = len(new_items) - inserted_count

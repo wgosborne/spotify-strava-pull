@@ -44,19 +44,19 @@ def refresh_access_token():
 
     return access_token
 
-def fetch_and_store_splits(activity_id, activity_name):
-    """Fetch splits for an activity and store them in the database."""
+def fetch_activity_detail(activity_id, activity_name):
+    """Fetch detailed activity data and return description and splits."""
     global access_token
 
     try:
-        # Fetch detailed activity data (includes splits)
+        # Fetch detailed activity data (includes splits and description)
         activity_detail_response = requests.get(
             f"https://www.strava.com/api/v3/activities/{activity_id}",
             headers={"Authorization": f"Bearer {access_token}"},
         )
 
         if activity_detail_response.status_code == 401:
-            log_poll("Access token expired while fetching splits, refreshing...")
+            log_poll("Access token expired while fetching activity detail, refreshing...")
             refresh_access_token()
             activity_detail_response = requests.get(
                 f"https://www.strava.com/api/v3/activities/{activity_id}",
@@ -64,6 +64,7 @@ def fetch_and_store_splits(activity_id, activity_name):
             )
 
         activity_detail = activity_detail_response.json()
+        description = activity_detail.get("description")
         splits = activity_detail.get("splits_metric", [])
 
         if splits:
@@ -88,8 +89,11 @@ def fetch_and_store_splits(activity_id, activity_name):
         else:
             log_poll(f'  No splits found for "{activity_name}"')
 
+        return description
+
     except Exception as e:
-        log_poll(f"  Warning: Could not fetch splits for activity {activity_id}: {e}")
+        log_poll(f"  Warning: Could not fetch activity detail for activity {activity_id}: {e}")
+        return None
 
 def poll():
     """Fetch recent activities from Strava and insert new ones into database."""
@@ -149,10 +153,13 @@ def poll():
             moving_time = item.get("moving_time", 0)  # in seconds
             average_speed = item.get("average_speed", 0)  # in m/s
             start_date = item.get("start_date")
-            if db.insert_activity(strava_id, name, distance, moving_time, average_speed, start_date):
+
+            # Fetch activity detail to get description and store splits
+            description = fetch_activity_detail(strava_id, name)
+
+            # Insert activity with description
+            if db.insert_activity(strava_id, name, distance, moving_time, average_speed, start_date, description):
                 inserted_count += 1
-                # Fetch and store splits for this activity (only if newly inserted)
-                fetch_and_store_splits(strava_id, name)
 
         duplicate_count = len(new_items) - inserted_count
         if duplicate_count > 0:
