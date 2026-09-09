@@ -41,9 +41,13 @@ def refresh_access_token():
 access_token = None
 last_processed_timestamp = None
 
-# Wrapped in function so it can be called repeatedly without re-auth
-def poll():
+def run_spotify_poll():
+    """Run one Spotify polling cycle. Called by orchestrator or standalone."""
     global access_token, last_processed_timestamp
+
+    if access_token is None:
+        access_token = refresh_access_token()
+
     recently_played = requests.get(
         "https://api.spotify.com/v1/me/player/recently-played",
         headers={"Authorization": f"Bearer {access_token}"},
@@ -51,7 +55,7 @@ def poll():
 
     # 401 means token expired; refresh and retry once
     if recently_played.status_code == 401:
-        print("Access token expired, refreshing...")
+        log_poll("Access token expired, refreshing...")
         access_token = refresh_access_token()
         recently_played = requests.get(
             "https://api.spotify.com/v1/me/player/recently-played",
@@ -108,5 +112,6 @@ def poll():
         if duplicate_count > 0:
             log_poll(f"Stored {inserted_count} plays, {duplicate_count} duplicates skipped")
 
-access_token = refresh_access_token()
-poll()
+if __name__ == "__main__":
+    access_token = refresh_access_token()
+    run_spotify_poll()

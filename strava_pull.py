@@ -44,6 +44,7 @@ def refresh_access_token():
 
     return access_token
 
+
 def fetch_activity_detail(activity_id, activity_name):
     """Fetch detailed activity data and return description and splits."""
     global access_token
@@ -95,7 +96,7 @@ def fetch_activity_detail(activity_id, activity_name):
         log_poll(f"  Warning: Could not fetch activity detail for activity {activity_id}: {e}")
         return None
 
-def poll():
+def run_strava_poll():
     """Fetch recent activities from Strava and insert new ones into database."""
     global access_token, expires_at, last_processed_activity_id
 
@@ -208,5 +209,6 @@ def poll():
         if success and not was_insert:
             log_poll(f'  -> Updated: "{activity_name}"')
 
-refresh_access_token()
-poll()
+if __name__ == "__main__":
+    refresh_access_token()
+    run_strava_poll()
