@@ -4,6 +4,7 @@ import requests
 from dotenv import load_dotenv
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+import db
 
 load_dotenv()
 CLIENT_ID = os.getenv("STRAVA_CLIENT_ID")
@@ -26,7 +27,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-scope = "activity:read_all"
+scope = "activity:read_all,activity:write"
 auth_url = f"https://www.strava.com/oauth/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={REDIRECT_URI}&scope={scope}"
 
 webbrowser.open(auth_url)
@@ -65,4 +66,9 @@ if access_token:
     with open(env_file, "w") as f:
         f.writelines(updated_lines)
     print("Saved access token and refresh token to .env")
+
+    if refresh_token:
+        db.save_refresh_token('strava', refresh_token)
+        print("Saved refresh token to Postgres")
+
     print("Strava authentication complete!")

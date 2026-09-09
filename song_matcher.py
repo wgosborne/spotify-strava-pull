@@ -119,31 +119,32 @@ def match_and_update_activities():
             log_poll(f'  Warning: Could not fetch current description for "{activity_name}": {e}')
             continue
 
-        # Build updated description with top 4 splits
+        # Build updated description with new format
         description_lines = []
 
         # Add fastest split (rank 1)
         fastest = splits[0]
         pace = format_pace(fastest["average_speed"])
         if fastest["song"]:
-            song_line = f"🎧 Fastest split ({pace}/mi): \"{fastest['song']['track_name']}\" by {fastest['song']['artist']}"
+            song_line = f"Fastest split ({pace}/mi): \"{fastest['song']['track_name']}\" by {fastest['song']['artist']}"
         else:
-            song_line = f"🎧 Fastest split ({pace}/mi): [no song playing]"
+            song_line = f"Fastest split ({pace}/mi): [no song playing]"
         description_lines.append(song_line)
 
-        # Add next 3 splits (ranks 2-4) with real rank numbering
-        has_other_songs = False
-        for rank, split in enumerate(splits[1:4], start=2):
-            if not split["song"]:
-                continue
-            pace = format_pace(split["average_speed"])
-            song_line = f"{rank}. ({pace}/mi) \"{split['song']['track_name']}\" by {split['song']['artist']}"
-            description_lines.append(song_line)
-            has_other_songs = True
+        # Collect songs and artists from ranks 2-4 (only those with matches)
+        sotd_songs = []
+        aotd_artists = []
+        for split in splits[1:4]:
+            if split["song"]:
+                sotd_songs.append(split["song"]["track_name"])
+                aotd_artists.append(split["song"]["artist"])
 
-        # Add header only if there are other splits with songs
-        if has_other_songs:
-            description_lines.insert(1, "Also playing during fast splits:")
+        # Add SOTD and AOTD lines only if there are songs in ranks 2-4
+        if sotd_songs:
+            sotd_line = "SOTD: " + ", ".join(f'"{song}"' for song in sotd_songs)
+            aotd_line = "AOTD: " + ", ".join(aotd_artists)
+            description_lines.append(sotd_line)
+            description_lines.append(aotd_line)
 
         song_section = "\n".join(description_lines)
 
@@ -157,27 +158,9 @@ def match_and_update_activities():
             log_poll(separator)
             log_poll(f'DRY RUN — "{activity_name}"')
             log_poll(separator)
-
-            # Fastest split
-            fastest = splits[0]
-            pace = format_pace(fastest["average_speed"])
-            if fastest["song"]:
-                log_poll(f'Fastest split:  {pace}/mi  →  "{fastest["song"]["track_name"]}" by {fastest["song"]["artist"]}')
-            else:
-                log_poll(f'Fastest split:  {pace}/mi  →  [no song playing]')
-
-            # Other splits with songs
-            other_splits_with_songs = []
-            for rank, split in enumerate(splits[1:4], start=2):
-                if split["song"]:
-                    pace = format_pace(split["average_speed"])
-                    other_splits_with_songs.append((rank, pace, split["song"]))
-
-            if other_splits_with_songs:
-                log_poll("Also fast:")
-                for rank, pace, song in other_splits_with_songs:
-                    log_poll(f'  #{rank}  {pace}/mi  →  "{song["track_name"]}" by {song["artist"]}')
-
+            log_poll("New description:")
+            for line in updated_description.split("\n"):
+                log_poll(line)
             log_poll(separator)
             matched_count += 1
         else:
