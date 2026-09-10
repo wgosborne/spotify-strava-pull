@@ -1,4 +1,5 @@
 import os
+import time
 import psycopg2
 from dotenv import load_dotenv
 
@@ -7,11 +8,26 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_connection():
-    """Get a Postgres connection using DATABASE_URL from .env"""
+    """Get a Postgres connection using DATABASE_URL from .env. Retries up to 3 times with exponential backoff to handle Neon cold-start connection drops."""
     if not DATABASE_URL:
         print("Warning: DATABASE_URL not set")
         return None
-    return psycopg2.connect(DATABASE_URL)
+
+    max_retries = 3
+    backoff_delays = [2, 4]
+
+    for attempt in range(max_retries):
+        try:
+            return psycopg2.connect(DATABASE_URL)
+        except psycopg2.OperationalError as e:
+            if attempt < max_retries - 1:
+                delay = backoff_delays[attempt]
+                print(f"Connection failed (attempt {attempt + 1}/{max_retries}): {e}")
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                print(f"Connection failed (attempt {attempt + 1}/{max_retries}): {e}")
+                raise
 
 
 def insert_play(track_name, artist, played_at, source, album_art_url=None):
@@ -250,7 +266,7 @@ def get_activity_by_id(strava_id):
 
 
 def get_activities_needing_song_match():
-    """Get activities where song_matched = FALSE, ordered by start_date DESC. Returns list of (strava_id, name, start_date) tuples."""
+    """Get activities where song_matched = FALSE from the last 7 days, ordered by start_date DESC. Returns list of (strava_id, name, start_date) tuples."""
     if not DATABASE_URL:
         print("Warning: DATABASE_URL not set")
         return []
@@ -263,7 +279,7 @@ def get_activities_needing_song_match():
 
         cur = conn.cursor()
         cur.execute(
-            "SELECT strava_id, name, start_date FROM activities WHERE song_matched = FALSE ORDER BY start_date DESC"
+            "SELECT strava_id, name, start_date FROM activities WHERE song_matched = FALSE AND start_date >= NOW() - INTERVAL '7 days' ORDER BY start_date DESC"
         )
         results = cur.fetchall()
         cur.close()
